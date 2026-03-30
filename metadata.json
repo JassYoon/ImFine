@@ -1,0 +1,9 @@
+{
+  "name": "ImFine - 식사하셨어요?",
+  "description": "대화 연습을 위한 단계적 채팅 및 보이스챗 애플리케이션. I'm fine, thanks. And you?",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
