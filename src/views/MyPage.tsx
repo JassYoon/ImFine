@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
-import { doc, getDoc, updateDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../App';
 import { motion } from 'motion/react';
 import { User, Camera, Save, ArrowLeft, Beaker } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../lib/firestore-utils';
+import { createTestChatRooms, createTestFriendRequests } from '../lib/devtools';
 
 export default function MyPage() {
   const { user } = useAuth();
@@ -14,6 +15,7 @@ export default function MyPage() {
   const [photoURL, setPhotoURL] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [generatingTestData, setGeneratingTestData] = useState(false);
 
   useEffect(() => {
     async function fetchProfile() {
@@ -53,37 +55,39 @@ export default function MyPage() {
 
   const generateTestData = async () => {
     if (!user) return;
+    setGeneratingTestData(true);
     try {
-      // 1. Create a test chat room
-      await addDoc(collection(db, 'chatRooms'), {
-        title: '[테스트] 채팅 및 친구 신청 테스트용',
-        creatorId: 'test-user-id',
-        creatorName: '테스트 유저',
-        participants: ['test-user-id'],
-        status: 'waiting',
-        topics: ['식사하셨어요?', '취미'],
-        timeLimit: 3600,
-        createdAt: serverTimestamp(),
-        lastMessageAt: serverTimestamp(),
-      });
+      // Create 4 test chat rooms
+      await createTestChatRooms();
+      
+      // Create 3 friend requests
+      await createTestFriendRequests(user.uid);
 
-      // 2. Create test friend requests (notifications)
-      const testRequests = [
-        { from: 'user1', fromName: '홍길동', type: 'friend_request', status: 'pending' },
-        { from: 'user2', fromName: '김철수', type: 'friend_request', status: 'pending' },
-        { from: 'user3', fromName: '이영희', type: 'friend_request', status: 'pending' },
-      ];
+      alert(`✅ 테스트 데이터가 생성되었습니다!
 
-      for (const req of testRequests) {
-        await addDoc(collection(db, 'users', user.uid, 'notifications'), {
-          ...req,
-          createdAt: serverTimestamp(),
-        });
-      }
+📌 생성된 데이터:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📱 채팅방 4개:
+  ⏱️ 5초 시간 제한
+  ⏱️ 30분 시간 제한
+  ⏱️ 5시간 시간 제한
+  ⏱️ 무제한 시간 제한
 
-      alert('테스트 데이터가 생성되었습니다.');
+👥 친구 신청 3개:
+  🔴 친구A
+  🟢 친구B
+  🔵 친구C
+
+💡 테스트 방법:
+1️⃣ 홈(친구) 탭 → 친구 신청 확인
+2️⃣ "문자로" 탭 → "추천 채팅방"에서 테스트 방 확인
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     } catch (error) {
+      console.error('Error generating test data:', error);
+      alert('테스트 데이터 생성 실패');
       handleFirestoreError(error, OperationType.WRITE, 'test-data', user);
+    } finally {
+      setGeneratingTestData(false);
     }
   };
 
@@ -172,16 +176,23 @@ export default function MyPage() {
             <h2 className="font-bold uppercase tracking-wider text-xs">Development Tools</h2>
           </div>
           <p className="text-sm text-gray-600 mb-4">
-            테스트용 채팅방과 친구 신청 알림(3개)을 생성합니다.
+            한 번의 클릭으로 테스트 환경을 구성합니다:
+            <br />• 채팅방 4개 (5초, 30분, 5시간, 무제한)
+            <br />• 친구 신청 3개 (A🔴, B🟢, C🔵)
           </p>
           <button
             onClick={generateTestData}
-            className="px-6 py-3 bg-gray-900 text-white rounded-xl font-bold text-sm hover:bg-gray-800 transition-colors"
+            disabled={generatingTestData}
+            className="w-full px-6 py-3 bg-gray-900 text-white rounded-xl font-bold text-sm hover:bg-gray-800 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            테스트 데이터 생성하기
+            <Beaker size={18} />
+            {generatingTestData ? '생성 중...' : 'Create Test Data'}
           </button>
         </div>
       )}
+    </motion.div>
+  );
+}
     </motion.div>
   );
 }
