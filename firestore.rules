@@ -1,0 +1,108 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: users
+    // Document ID: userId (auth.uid)
+    // Fields: uid, displayName, photoURL, email, role, friends, lastLogin
+    //
+    // Collection: chatRooms
+    // Document ID: roomId (auto-generated)
+    // Fields: creatorId, title, topics, timeLimit, createdAt, lastMessageAt, participants, status
+    //
+    // Collection: chatRooms/{roomId}/messages
+    // Document ID: messageId (auto-generated)
+    // Fields: senderId, text, timestamp, type, overtime
+    //
+    // Collection: friendRequests
+    // Document ID: requestId (auto-generated)
+    // Fields: fromId, fromName, fromPhoto, toId, status, createdAt
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    function isAdmin() {
+      return isAuthenticated() && 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "jasper3.141592@gmail.com" && request.auth.token.email_verified == true));
+    }
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'displayName', 'photoURL', 'email', 'role', 'friends', 'lastLogin']) &&
+             data.uid is string &&
+             data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 50 &&
+             data.email is string &&
+             (data.role == 'user' || data.role == 'admin');
+    }
+
+    function isValidChatRoom(data) {
+      return hasRequiredFields(['creatorId', 'title', 'createdAt', 'status']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 100 &&
+             data.status in ['waiting', 'active', 'closed'];
+    }
+
+    function isValidMessage(data) {
+      return hasRequiredFields(['senderId', 'text', 'timestamp']) &&
+             data.senderId == request.auth.uid &&
+             data.text is string && data.text.size() > 0 && data.text.size() < 1000;
+    }
+
+    function isValidFriendRequest(data) {
+      return hasRequiredFields(['fromId', 'toId', 'status', 'createdAt']) &&
+             data.fromId is string && data.toId is string &&
+             data.status in ['pending', 'accepted', 'rejected'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'user' || isAdmin());
+      allow update: if isAuthenticated() && (
+        (isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin())) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends']))
+      );
+    }
+
+    match /chatRooms/{roomId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidChatRoom(request.resource.data);
+      allow update: if isAuthenticated() && (
+        (resource.data.creatorId == request.auth.uid) || 
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['participants', 'status', 'lastMessageAt']))
+      );
+      allow delete: if isAuthenticated() && resource.data.creatorId == request.auth.uid;
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && isValidMessage(request.resource.data);
+      }
+    }
+
+    match /friendRequests/{requestId} {
+      allow read: if isAuthenticated() && (resource.data.fromId == request.auth.uid || resource.data.toId == request.auth.uid);
+      allow create: if isAuthenticated() && (request.resource.data.fromId == request.auth.uid || isAdmin());
+      allow update: if isAuthenticated() && (resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid || isAdmin());
+      allow delete: if isAuthenticated() && (resource.data.fromId == request.auth.uid || resource.data.toId == request.auth.uid || isAdmin());
+    }
+  }
+}

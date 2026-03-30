@@ -4,6 +4,17 @@ export interface UserProfile {
   email: string;
   photoURL?: string;
   createdAt: any;
+  profileIcon?: string; // Color or Emoji string
+  bio?: string;
+  preferredTime?: number;
+  preferredTopics?: string[];
+}
+
+export interface FriendRequest {
+  id: string;
+  from: UserProfile;
+  status: 'pending' | 'accepted' | 'declined';
+  timestamp: Date;
 }
 
 export interface ChatRoom {

@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique user ID" },
+        "displayName": { "type": "string", "description": "User's display name" },
+        "photoURL": { "type": "string", "description": "User's profile photo URL" },
+        "email": { "type": "string", "description": "User's email address" },
+        "role": { "type": "string", "enum": ["admin", "user"], "description": "User's role" }
+      },
+      "required": ["uid", "displayName", "email"]
+    },
+    "ChatRoom": {
+      "title": "ChatRoom",
+      "description": "Information about a chat room",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "title": { "type": "string" },
+        "topics": { "type": "array", "items": { "type": "string" } },
+        "timeLimit": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastMessageAt": { "type": "string", "format": "date-time" },
+        "participants": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["waiting", "active", "closed"] }
+      },
+      "required": ["creatorId", "title", "createdAt", "status"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A message in a chat room",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "type": { "type": "string" },
+        "overtime": { "type": "integer" }
+      },
+      "required": ["senderId", "text", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents"
+    },
+    "/chatRooms/{roomId}": {
+      "schema": "ChatRoom",
+      "description": "Chat room documents"
+    },
+    "/chatRooms/{roomId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages within a chat room"
+    }
+  }
+}

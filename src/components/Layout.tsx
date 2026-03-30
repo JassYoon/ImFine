@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Users, MessageSquare, Mic, BrainCircuit } from 'lucide-react';
+import { auth } from '../firebase';
 import Logo from './Logo';
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -40,7 +41,15 @@ export default function Layout({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <div className="w-10 h-10 rounded-full bg-gray-200" />
+        <NavLink to="/mypage" className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden border border-gray-200 hover:border-orange-500 transition-all">
+          {auth.currentUser?.photoURL ? (
+            <img src={auth.currentUser.photoURL} alt="Profile" className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-gray-400">
+              <Users size={20} />
+            </div>
+          )}
+        </NavLink>
       </header>
 
       {/* Main Content */}
@@ -66,6 +75,25 @@ export default function Layout({ children }: { children: ReactNode }) {
             <span className="text-[10px] font-bold">{item.label}</span>
           </NavLink>
         ))}
+        <NavLink
+          to="/mypage"
+          className={({ isActive }) =>
+            `flex flex-col items-center justify-center gap-1 transition-colors ${
+              isActive ? 'text-orange-500' : 'text-gray-400'
+            }`
+          }
+        >
+          <div className="w-6 h-6 rounded-full bg-gray-100 overflow-hidden border border-gray-200">
+            {auth.currentUser?.photoURL ? (
+              <img src={auth.currentUser.photoURL} alt="Profile" className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-gray-400">
+                <Users size={12} />
+              </div>
+            )}
+          </div>
+          <span className="text-[10px] font-bold">마이페이지</span>
+        </NavLink>
       </nav>
     </div>
   );

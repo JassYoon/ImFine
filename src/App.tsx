@@ -1,32 +1,108 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { setDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { auth, db, signInWithGoogle } from './firebase';
 import Layout from './components/Layout';
 import Logo from './components/Logo';
 import Home from './views/Home';
 import TextChat from './views/TextChat';
 import VoiceChat from './views/VoiceChat';
 import Practice from './views/Practice';
+import MyPage from './views/MyPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
+// Firebase Context
+interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+}
+
+const AuthContext = createContext<AuthContextType>({ user: null, loading: true });
+
+export const useAuth = () => useContext(AuthContext);
+
+// App Component
 export default function App() {
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [showPrePermission, setShowPrePermission] = useState(true);
 
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        // Create/Update user profile in Firestore
+        try {
+          await setDoc(doc(db, 'users', user.uid), {
+            uid: user.uid,
+            displayName: user.displayName,
+            photoURL: user.photoURL,
+            email: user.email,
+            lastLogin: serverTimestamp(),
+            role: 'user' // Default role
+          }, { merge: true });
+        } catch (error) {
+          console.error('Error updating user profile:', error);
+        }
+      }
+      setUser(user);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
   const requestPermissions = async () => {
     setShowPrePermission(false);
-    setLoading(true);
     try {
-      // Request camera and microphone permissions
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-      // Stop all tracks immediately so camera/mic aren't actually "on"
       stream.getTracks().forEach(track => track.stop());
-      setLoading(false);
     } catch (err) {
       console.error('Permission denied:', err);
       setPermissionDenied(true);
-      setLoading(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="flex flex-col items-center gap-6">
+          <Logo className="w-24 h-24" />
+          <div className="space-y-1 text-center">
+            <h1 className="text-3xl font-black text-orange-500 tracking-tighter">식사하셨어요?</h1>
+            <p className="text-xs font-bold text-gray-300 uppercase tracking-[0.3em]">ImFine</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white p-8">
+        <div className="flex flex-col items-center gap-8 text-center max-w-sm">
+          <div className="w-24 h-24 bg-orange-50 rounded-[40px] flex items-center justify-center rotate-12">
+            <Logo className="w-14 h-14" />
+          </div>
+          <div className="space-y-4">
+            <h1 className="text-3xl font-black text-gray-900 tracking-tighter leading-tight">
+              반가워요!<br/>로그인이 필요해요
+            </h1>
+            <p className="text-gray-500 font-medium leading-relaxed">
+              '식사하셨어요?'는 구글 로그인을 통해 안전하게 대화를 나눌 수 있습니다.
+            </p>
+          </div>
+          <button 
+            onClick={signInWithGoogle}
+            className="w-full py-5 bg-white border-2 border-gray-100 text-gray-900 font-black rounded-3xl shadow-sm hover:border-orange-500 transition-all flex items-center justify-center gap-3"
+          >
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-6 h-6" />
+            Google로 시작하기
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (showPrePermission) {
     return (
@@ -84,32 +160,23 @@ export default function App() {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="flex flex-col items-center gap-6">
-          <Logo className="w-24 h-24" />
-          <div className="space-y-1 text-center">
-            <h1 className="text-3xl font-black text-orange-500 tracking-tighter">식사하셨어요?</h1>
-            <p className="text-xs font-bold text-gray-300 uppercase tracking-[0.3em]">ImFine</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <Router>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/friends" element={<Navigate to="/" replace />} />
-          <Route path="/text-chat" element={<TextChat />} />
-          <Route path="/voice-chat" element={<VoiceChat />} />
-          <Route path="/practice" element={<Practice />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Layout>
-    </Router>
+    <AuthContext.Provider value={{ user, loading }}>
+      <ErrorBoundary>
+        <Router>
+          <Layout>
+            <Routes>
+              <Route path="/" element={<Home />} />
+              <Route path="/friends" element={<Navigate to="/" replace />} />
+              <Route path="/text-chat" element={<TextChat />} />
+              <Route path="/voice-chat" element={<VoiceChat />} />
+              <Route path="/practice" element={<Practice />} />
+              <Route path="/mypage" element={<MyPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Layout>
+        </Router>
+      </ErrorBoundary>
+    </AuthContext.Provider>
   );
 }
