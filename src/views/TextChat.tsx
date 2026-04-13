@@ -48,7 +48,9 @@ export default function TextChat() {
       where('status', '==', 'waiting')
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const rooms = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatRoom));
+      const rooms = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as ChatRoom))
+        .filter(room => (room as any).kind !== 'direct');
       setWaitingRooms(rooms);
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'chatRooms (waiting)', user));
     return () => unsubscribe();
@@ -64,7 +66,7 @@ export default function TextChat() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const rooms = snapshot.docs
         .map(doc => ({ id: doc.id, ...doc.data() } as ChatRoom))
-        .filter(room => room.creatorId !== user.uid);
+        .filter(room => room.creatorId !== user.uid && (room as any).kind !== 'direct');
       setSearchRooms(rooms);
     }, (error) => handleFirestoreError(error, OperationType.LIST, 'chatRooms (search)', user));
     return () => unsubscribe();
@@ -78,6 +80,7 @@ export default function TextChat() {
         creatorId: user.uid,
         participants: [user.uid],
         status: 'waiting',
+        kind: 'open',
         createdAt: serverTimestamp(),
         lastMessageAt: serverTimestamp(),
       });

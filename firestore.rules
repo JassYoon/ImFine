@@ -46,7 +46,9 @@ service cloud.firestore {
     // Domain Validators
     // ===============================================================
     function isValidUser(data) {
-      return hasOnlyAllowedFields(['uid', 'displayName', 'photoURL', 'email', 'role', 'friends', 'lastLogin']) &&
+      return hasOnlyAllowedFields(['uid', 'displayName', 'nickname', 'photoURL', 'profileIcon',
+                                   'email', 'role', 'friends', 'lastLogin', 'bio',
+                                   'preferredTime', 'preferredTopics', 'createdAt', 'updatedAt']) &&
              data.uid is string &&
              data.displayName is string && data.displayName.size() > 0 && data.displayName.size() < 50 &&
              data.email is string &&
@@ -68,6 +70,7 @@ service cloud.firestore {
     function isValidFriendRequest(data) {
       return hasRequiredFields(['fromId', 'toId', 'status', 'createdAt']) &&
              data.fromId is string && data.toId is string &&
+             data.fromId != data.toId &&
              data.status in ['pending', 'accepted', 'rejected'];
     }
 
@@ -76,10 +79,13 @@ service cloud.firestore {
     // ===============================================================
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'user' || isAdmin());
+      // DEV: test-* user docs are seedable by any authenticated user.
+      allow create: if (isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'user' || isAdmin()))
+                    || (isAuthenticated() && userId.matches('test-.*') && isValidUser(request.resource.data));
       allow update: if isAuthenticated() && (
         (isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin())) ||
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends']))
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends'])) ||
+        (userId.matches('test-.*'))
       );
     }
 
@@ -99,10 +105,30 @@ service cloud.firestore {
     }
 
     match /friendRequests/{requestId} {
-      allow read: if isAuthenticated() && (resource.data.fromId == request.auth.uid || resource.data.toId == request.auth.uid);
-      allow create: if isAuthenticated() && (request.resource.data.fromId == request.auth.uid || isAdmin());
-      allow update: if isAuthenticated() && (resource.data.toId == request.auth.uid || resource.data.fromId == request.auth.uid || isAdmin());
-      allow delete: if isAuthenticated() && (resource.data.fromId == request.auth.uid || resource.data.toId == request.auth.uid || isAdmin());
+      allow read: if isAuthenticated() && (
+        resource.data.fromId == request.auth.uid ||
+        resource.data.toId == request.auth.uid ||
+        isAdmin()
+      );
+      // DEV: `test-*` fromId is allowed for seeding inbound test notifications.
+      // Tighten or remove in production.
+      allow create: if isAuthenticated() &&
+                    isValidFriendRequest(request.resource.data) &&
+                    (request.resource.data.fromId == request.auth.uid ||
+                     request.resource.data.fromId.matches('test-.*'));
+      // Accept: only recipient can change status to 'accepted'
+      allow update: if isAuthenticated() && (
+        (resource.data.toId == request.auth.uid &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']) &&
+         request.resource.data.status == 'accepted') ||
+        isAdmin()
+      );
+      // Reject (by toId) or Cancel (by fromId)
+      allow delete: if isAuthenticated() && (
+        resource.data.fromId == request.auth.uid ||
+        resource.data.toId == request.auth.uid ||
+        isAdmin()
+      );
     }
   }
 }

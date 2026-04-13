@@ -1,70 +1,102 @@
-import { serverTimestamp, collection, addDoc } from 'firebase/firestore';
+import {
+  addDoc,
+  collection,
+  getDocs,
+  query,
+  serverTimestamp,
+  setDoc,
+  where,
+  writeBatch,
+  doc,
+} from 'firebase/firestore';
 import { db } from '../firebase';
 
-/**
- * Create 4 test chat rooms with different time limits
- * These will appear in "추천 채팅방" (recommend section) in TextChat
- */
-export async function createTestChatRooms(): Promise<string[]> {
-  const testRooms = [
-    {
-      title: '[테스트] 5초 대화',
-      topics: ['테스트'],
-      timeLimit: 5,
-    },
-    {
-      title: '[테스트] 30분 대화',
-      topics: ['테스트'],
-      timeLimit: 1800,
-    },
-    {
-      title: '[테스트] 5시간 대화',
-      topics: ['테스트'],
-      timeLimit: 18000,
-    },
-    {
-      title: '[테스트] 무제한 대화',
-      topics: ['테스트'],
-      timeLimit: null,
-    }
-  ];
+// Virtual user identities used by test-data seeding. Their uids use the
+// `test-*` prefix, which firestore.rules allows as an exception for
+// friendRequest creation in dev.
+export const TEST_USERS = {
+  A: { uid: 'test-user-A', name: 'A', icon: 'white' },
+  B: { uid: 'test-user-B', name: 'B', icon: 'blue' },
+  C: { uid: 'test-user-C', name: 'C', icon: 'pink' },
+  D: { uid: 'test-user-D', name: 'D', icon: 'green' },
+} as const;
 
-  const createdRoomIds: string[] = [];
+async function clearMyTestFriendRequests(myUid: string) {
+  const [incoming, outgoing] = await Promise.all([
+    getDocs(query(collection(db, 'friendRequests'), where('toId', '==', myUid))),
+    getDocs(query(collection(db, 'friendRequests'), where('fromId', '==', myUid))),
+  ]);
+  const batch = writeBatch(db);
+  const touch = (id: string) => batch.delete(doc(db, 'friendRequests', id));
+  incoming.forEach((d) => {
+    if ((d.data() as any).fromId?.startsWith?.('test-')) touch(d.id);
+  });
+  outgoing.forEach((d) => {
+    if ((d.data() as any).toId?.startsWith?.('test-')) touch(d.id);
+  });
+  await batch.commit();
+}
 
-  for (const roomData of testRooms) {
-    const docRef = await addDoc(collection(db, 'chatRooms'), {
-      ...roomData,
-      creatorId: 'test-virtual-user-imfine',
-      participants: ['test-virtual-user-imfine'],
-      status: 'waiting', // IMPORTANT: must be 'waiting' to appear in searchRooms
-      createdAt: serverTimestamp(),
-      lastMessageAt: serverTimestamp(),
-    });
-    createdRoomIds.push(docRef.id);
-  }
-
-  return createdRoomIds;
+async function seedTestUsers(): Promise<void> {
+  const all = Object.values(TEST_USERS);
+  await Promise.all(
+    all.map((u) =>
+      setDoc(
+        doc(db, 'users', u.uid),
+        {
+          uid: u.uid,
+          displayName: u.name,
+          nickname: u.name,
+          profileIcon: u.icon,
+          email: `${u.uid}@imfine.local`,
+          role: 'user',
+        },
+        { merge: true },
+      ),
+    ),
+  );
 }
 
 /**
- * Create 3 friend requests (notifications) with colored icons
- * These will appear in Home.tsx notifications section
+ * Seed test friend requests:
+ * - Incoming to me: A (white), B (blue), C (pink)
+ * - Outgoing from me: D (green)
+ * Also seeds the test user docs so accept/reject works end-to-end.
+ * Clears existing test-* friend requests involving me first to allow re-runs.
  */
-export async function createTestFriendRequests(userId: string): Promise<void> {
-  const virtualUsers = [
-    { name: '친구A', icon: '🔴' },
-    { name: '친구B', icon: '🟢' },
-    { name: '친구C', icon: '🔵' },
-  ];
+export async function seedTestFriendRequests(
+  me: { uid: string; name: string; photo?: string },
+): Promise<void> {
+  await seedTestUsers();
+  await clearMyTestFriendRequests(me.uid);
 
-  for (const user of virtualUsers) {
-    await addDoc(collection(db, 'users', userId, 'notifications'), {
-      fromUserId: `virtual-${user.name}`,
-      fromName: user.name,
-      fromIcon: user.icon,
-      type: 'friend_request',
+  const incoming = [TEST_USERS.A, TEST_USERS.B, TEST_USERS.C];
+  for (const u of incoming) {
+    await addDoc(collection(db, 'friendRequests'), {
+      fromId: u.uid,
+      fromName: u.name,
+      fromIcon: u.icon,
+      fromPhoto: null,
+      toId: me.uid,
+      toName: me.name,
+      toPhoto: me.photo ?? null,
+      toIcon: null,
       status: 'pending',
       createdAt: serverTimestamp(),
     });
   }
+
+  const d = TEST_USERS.D;
+  await addDoc(collection(db, 'friendRequests'), {
+    fromId: me.uid,
+    fromName: me.name,
+    fromPhoto: me.photo ?? null,
+    fromIcon: null,
+    toId: d.uid,
+    toName: d.name,
+    toIcon: d.icon,
+    toPhoto: null,
+    status: 'pending',
+    createdAt: serverTimestamp(),
+  });
 }

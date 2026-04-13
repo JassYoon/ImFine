@@ -1,8 +1,9 @@
 import React, { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { setDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { setDoc, updateDoc, doc, getDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { auth, db, signInWithGoogle } from './firebase';
+import type { UserProfile } from './types';
 import Layout from './components/Layout';
 import Logo from './components/Logo';
 import Home from './views/Home';
@@ -15,16 +16,18 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 // Firebase Context
 interface AuthContextType {
   user: User | null;
+  profile: UserProfile | null;
   loading: boolean;
 }
 
-const AuthContext = createContext<AuthContextType>({ user: null, loading: true });
+const AuthContext = createContext<AuthContextType>({ user: null, profile: null, loading: true });
 
 export const useAuth = () => useContext(AuthContext);
 
 // App Component
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [showPrePermission, setShowPrePermission] = useState(true);
@@ -32,25 +35,42 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Create/Update user profile in Firestore
+        const ref = doc(db, 'users', user.uid);
         try {
-          await setDoc(doc(db, 'users', user.uid), {
-            uid: user.uid,
-            displayName: user.displayName,
-            photoURL: user.photoURL,
-            email: user.email,
-            lastLogin: serverTimestamp(),
-            role: 'user' // Default role
-          }, { merge: true });
+          const snap = await getDoc(ref);
+          if (!snap.exists()) {
+            // First login: copy Google profile as starting point.
+            await setDoc(ref, {
+              uid: user.uid,
+              displayName: user.displayName ?? '',
+              photoURL: user.photoURL ?? '',
+              email: user.email ?? '',
+              role: 'user',
+              lastLogin: serverTimestamp(),
+            });
+          } else {
+            // Subsequent login: only touch lastLogin, do not overwrite user edits.
+            await updateDoc(ref, { lastLogin: serverTimestamp() });
+          }
         } catch (error) {
-          console.error('Error updating user profile:', error);
+          console.error('Error initializing user profile:', error);
         }
+      } else {
+        setProfile(null);
       }
       setUser(user);
       setLoading(false);
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsub = onSnapshot(doc(db, 'users', user.uid), (snap) => {
+      setProfile(snap.exists() ? ({ uid: user.uid, ...(snap.data() as any) } as UserProfile) : null);
+    });
+    return () => unsub();
+  }, [user]);
 
   const requestPermissions = async () => {
     setShowPrePermission(false);
@@ -161,7 +181,7 @@ export default function App() {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading }}>
+    <AuthContext.Provider value={{ user, profile, loading }}>
       <ErrorBoundary>
         <Router>
           <Layout>

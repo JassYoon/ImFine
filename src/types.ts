@@ -1,9 +1,10 @@
 export interface UserProfile {
   uid: string;
-  nickname: string;
+  nickname?: string;
+  displayName?: string;
   email: string;
   photoURL?: string;
-  createdAt: any;
+  createdAt?: any;
   profileIcon?: string; // Color or Emoji string
   bio?: string;
   preferredTime?: number;
@@ -12,10 +13,26 @@ export interface UserProfile {
 
 export interface FriendRequest {
   id: string;
-  from: UserProfile;
-  status: 'pending' | 'accepted' | 'declined';
-  timestamp: Date;
+  fromId: string;
+  fromName: string;
+  fromPhoto?: string;
+  fromIcon?: string;
+  toId: string;
+  toName?: string;
+  toPhoto?: string;
+  toIcon?: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  createdAt?: any;
 }
+
+export interface FriendCardData {
+  uid: string;
+  nickname: string;
+  photoURL?: string;
+  profileIcon?: string;
+}
+
+export const TESTER_UID = 'tester';
 
 export interface ChatRoom {
   id: string;

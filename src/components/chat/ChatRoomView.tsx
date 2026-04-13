@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, ChevronRight, Paperclip, Send, BrainCircuit, Clock, X, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { collection, query, onSnapshot, addDoc, serverTimestamp, orderBy, limit, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, addDoc, serverTimestamp, orderBy, limit, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../App';
-import { ChatRoom, Message } from '../../types';
+import { ChatRoom, Message, TESTER_UID } from '../../types';
+import type { FriendCardData } from '../../types';
 import { handleFirestoreError, OperationType } from '../../lib/firestore-utils';
+import ProfileIcon from '../ProfileIcon';
+import ProfileModal from '../ProfileModal';
 
 interface ChatRoomViewProps {
   room: ChatRoom;
@@ -15,12 +18,42 @@ interface ChatRoomViewProps {
 const ChatRoomView: React.FC<ChatRoomViewProps> = ({ room, onClose }) => {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [partner, setPartner] = useState<FriendCardData | null>(null);
+  const [showProfile, setShowProfile] = useState(false);
+  const [myFriends, setMyFriends] = useState<string[]>([]);
   const [input, setInput] = useState('');
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [timeLeft, setTimeLeft] = useState(room.timeLimit || 3600);
   const [activeRecommendation, setActiveRecommendation] = useState<string | null>(null);
   const recommendedTopics = ['오늘의 날씨', '최근 본 영화', '좋아하는 음악', '식사하셨어요?', '최근의 고민', '가고 싶은 여행지'];
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      const me = await getDoc(doc(db, 'users', user.uid));
+      setMyFriends((me.exists() && (me.data() as any).friends) || []);
+    })();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const partnerId = room.participants?.find((p) => p !== user.uid) || TESTER_UID;
+    (async () => {
+      const snap = await getDoc(doc(db, 'users', partnerId));
+      if (snap.exists()) {
+        const d = snap.data() as any;
+        setPartner({
+          uid: partnerId,
+          nickname: d.nickname || d.displayName || partnerId,
+          photoURL: d.photoURL,
+          profileIcon: d.profileIcon,
+        });
+      } else {
+        setPartner({ uid: partnerId, nickname: partnerId === TESTER_UID ? 'tester' : partnerId, profileIcon: partnerId === TESTER_UID ? 'yellow' : undefined });
+      }
+    })();
+  }, [room.id, room.participants, user]);
 
   useEffect(() => {
     if (!room.id) return;
@@ -140,11 +173,31 @@ const ChatRoomView: React.FC<ChatRoomViewProps> = ({ room, onClose }) => {
           )}
         </AnimatePresence>
 
-        {messages.map((msg) => (
-          <div key={msg.id} className={`flex items-end gap-2 ${msg.senderId === user?.uid ? 'flex-row-reverse' : 'flex-row'}`}>
+        {messages.map((msg, idx) => {
+          const isMine = msg.senderId === user?.uid;
+          const prev = messages[idx - 1];
+          const showPartnerHeader = !isMine && (!prev || prev.senderId !== msg.senderId);
+          return (
+          <div key={msg.id} className={`flex items-end gap-2 ${isMine ? 'flex-row-reverse' : 'flex-row'}`}>
+            {!isMine && (
+              showPartnerHeader && partner ? (
+                <div className="flex flex-col items-center gap-1">
+                  <ProfileIcon
+                    photoURL={partner.photoURL}
+                    profileIcon={partner.profileIcon}
+                    nickname={partner.nickname}
+                    size={32}
+                    onClick={() => setShowProfile(true)}
+                  />
+                  <span className="text-[9px] font-black text-gray-500 max-w-[48px] truncate">{partner.nickname}</span>
+                </div>
+              ) : (
+                <div className="w-8 flex-shrink-0" />
+              )
+            )}
             <div className={`max-w-[70%] p-4 rounded-3xl text-sm font-medium shadow-sm ${
-              msg.senderId === user?.uid 
-                ? 'bg-orange-500 text-white rounded-br-none' 
+              isMine
+                ? 'bg-orange-500 text-white rounded-br-none'
                 : 'bg-white text-gray-800 rounded-bl-none border border-gray-100'
             }`}>
               {msg.text}
@@ -158,7 +211,8 @@ const ChatRoomView: React.FC<ChatRoomViewProps> = ({ room, onClose }) => {
               {msg.timestamp?.toDate ? msg.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '...'}
             </span>
           </div>
-        ))}
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 
@@ -227,6 +281,16 @@ const ChatRoomView: React.FC<ChatRoomViewProps> = ({ room, onClose }) => {
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showProfile && partner && (
+          <ProfileModal
+            target={partner}
+            myFriends={myFriends}
+            onClose={() => setShowProfile(false)}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

@@ -1,11 +1,13 @@
 import { ReactNode } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Users, MessageSquare, Mic, BrainCircuit } from 'lucide-react';
-import { auth } from '../firebase';
+import { useAuth } from '../App';
 import Logo from './Logo';
+import ProfileIcon from './ProfileIcon';
 
 export default function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
+  const { profile } = useAuth();
 
   const navItems = [
     { path: '/', icon: Users, label: '친구' },
@@ -41,14 +43,13 @@ export default function Layout({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <NavLink to="/mypage" className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden border border-gray-200 hover:border-orange-500 transition-all">
-          {auth.currentUser?.photoURL ? (
-            <img src={auth.currentUser.photoURL} alt="Profile" className="w-full h-full object-cover" />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center text-gray-400">
-              <Users size={20} />
-            </div>
-          )}
+        <NavLink to="/mypage" className="rounded-full hover:ring-2 hover:ring-orange-200 transition-all">
+          <ProfileIcon
+            photoURL={profile?.photoURL}
+            profileIcon={profile?.profileIcon}
+            nickname={profile?.nickname || profile?.displayName}
+            size={40}
+          />
         </NavLink>
       </header>
 
@@ -83,15 +84,12 @@ export default function Layout({ children }: { children: ReactNode }) {
             }`
           }
         >
-          <div className="w-6 h-6 rounded-full bg-gray-100 overflow-hidden border border-gray-200">
-            {auth.currentUser?.photoURL ? (
-              <img src={auth.currentUser.photoURL} alt="Profile" className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-gray-400">
-                <Users size={12} />
-              </div>
-            )}
-          </div>
+          <ProfileIcon
+            photoURL={profile?.photoURL}
+            profileIcon={profile?.profileIcon}
+            nickname={profile?.nickname || profile?.displayName}
+            size={24}
+          />
           <span className="text-[10px] font-bold">마이페이지</span>
         </NavLink>
       </nav>
